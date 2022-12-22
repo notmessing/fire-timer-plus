@@ -1,5 +1,7 @@
 package com.firetimer;
 
+import java.awt.Color;
+import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -7,13 +9,28 @@ import net.runelite.client.config.ConfigItem;
 @ConfigGroup("firetimer")
 public interface FireTimerConfig extends Config
 {
+	@Alpha
 	@ConfigItem(
-		keyName = "circle",
-		name = "Tile Timer",
-		description = "Use a visual timer drawn over the fire rather than a clock-style countdown."
+			position = 2,
+			keyName = "normalTimerColor",
+			name = "Normal timer color",
+			description = "Configures the color of the timer"
 	)
-	default Boolean circle()
+	default Color normalTimerColor()
 	{
-		return false;
+		return Color.WHITE;
 	}
+
+	@Alpha
+	@ConfigItem(
+			position = 3,
+			keyName = "lowTimerColor",
+			name = "Low timer color",
+			description = "Configures the color of the timer when remaining time is low"
+	)
+	default Color lowTimerColor()
+	{
+		return Color.RED;
+	}
+
 }
