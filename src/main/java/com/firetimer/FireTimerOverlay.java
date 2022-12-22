@@ -18,7 +18,8 @@ public class FireTimerOverlay extends Overlay {
 
     NumberFormat format = new DecimalFormat("#");
 
-    final int FIRE_TOTAL_TICKS = 119;
+    final int FIRE_MAX_TICKS = 200;
+    final int FIRE_MIN_TICKS = 100;
 
     @Inject
     FireTimerOverlay(FireTimerPlugin plugin, FireTimerConfig config)
@@ -32,33 +33,31 @@ public class FireTimerOverlay extends Overlay {
     @Override
     public Dimension render(Graphics2D graphics)
     {
-        plugin.getFireIds().forEach(fireTimeLocation -> renderTimer(fireTimeLocation, graphics));
+        this.plugin.getFireIds().forEach((fireIdHash, fireTimeLocation) -> renderTimer(fireTimeLocation, graphics));
         return null;
     }
 
     private void renderTimer(final FireTimeLocation fireTimeLocation, final Graphics2D graphics)
     {
-        double timeLeft = FIRE_TOTAL_TICKS - fireTimeLocation.getTimeSinceFireLit();
+        double timeLeft = this.FIRE_MAX_TICKS - fireTimeLocation.getTicksSinceFireLit();
 
-        double lowDisplay = 59;
-
-        Color timerColor = Color.GREEN;
+        Color timerColor = this.config.normalTimerColor();
 
         if (timeLeft < 0)
         {
             timeLeft = 0;
         }
 
-        if (timeLeft <= lowDisplay)
+        if (timeLeft <= this.FIRE_MIN_TICKS)
         {
-            timerColor = Color.RED;
+            timerColor = this.config.lowTimerColor();
         }
 
         String timeLeftString = String.valueOf(format.format(timeLeft));
 
         final Point canvasPoint = fireTimeLocation.getFire().getCanvasTextLocation(graphics, timeLeftString, 40);
 
-        if (canvasPoint != null && (FIRE_TOTAL_TICKS >= timeLeft))
+        if (canvasPoint != null && (timeLeft >= 0))
         {
             OverlayUtil.renderTextLocation(graphics, canvasPoint, timeLeftString, timerColor);
         }
