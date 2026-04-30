@@ -34,6 +34,13 @@ public class FireTimerPlugin extends Plugin
 	// fires before the GameObjectSpawned for the new campfire).
 	private static final int RECENT_LOG_TIMEOUT_TICKS = 2;
 
+	// Forester's Campfires get re-instantiated by the engine roughly
+	// every 99 ticks (same id, same hash, same tile -- a despawn+respawn
+	// pair within one tick) even when nothing visible changes. Defer
+	// despawn-driven removal by this many ticks so we can match the
+	// respawn and preserve tracking state across the re-instantiation.
+	private static final int DESPAWN_GRACE_TICKS = 1;
+
 	@Inject
 	private Client client;
 
@@ -53,10 +60,16 @@ public class FireTimerPlugin extends Plugin
 	private CampfireLog lastConsumedLog;
 	private long lastConsumedLogTick;
 
+	// hash -> tick the despawn was observed; entry lingers in fireIds
+	// until either a matching respawn unmarks it, or onGameTick prunes
+	// it after the grace window expires.
+	private Map<Long, Long> pendingDespawns;
+
 	@Override
 	protected void startUp() throws Exception
 	{
 		this.fireIds = new HashMap<>();
+		this.pendingDespawns = new HashMap<>();
 		this.previousFiremakingXp = -1;
 		this.lastConsumedLog = null;
 		this.lastConsumedLogTick = -1;
@@ -67,6 +80,7 @@ public class FireTimerPlugin extends Plugin
 	protected void shutDown() throws Exception
 	{
 		this.fireIds.clear();
+		this.pendingDespawns.clear();
 		this.previousFiremakingXp = -1;
 		this.lastConsumedLog = null;
 		this.lastConsumedLogTick = -1;
@@ -80,6 +94,7 @@ public class FireTimerPlugin extends Plugin
 				event.getGameState() == GameState.HOPPING)
 		{
 			this.fireIds.clear();
+			this.pendingDespawns.clear();
 			this.previousFiremakingXp = -1;
 			this.lastConsumedLog = null;
 			this.lastConsumedLogTick = -1;
@@ -147,6 +162,21 @@ public class FireTimerPlugin extends Plugin
 			return;
 		}
 
+		log.info("[fire-timer-plus] SPAWN tick={} id={} hash={} tile={} canRefuel={}",
+				this.lastTrueTickUpdate, obj.getId(), obj.getHash(), obj.getWorldLocation(), fireType.isCanRefuel());
+
+		// If this respawn matches a pending despawn for the same hash,
+		// the engine is just re-instantiating the same campfire. Keep
+		// all tracking state and only refresh the GameObject reference.
+		if (this.pendingDespawns.remove(obj.getHash()) != null) {
+			FireTimeLocation existing = this.fireIds.get(obj.getHash());
+			if (existing != null) {
+				existing.setFire(obj);
+				log.info("[fire-timer-plus] (re-instantiated, state preserved)");
+				return;
+			}
+		}
+
 		Integer maxOverride = null;
 		if (fireType.isCanRefuel()
 				&& this.lastConsumedLog != null
@@ -176,8 +206,15 @@ public class FireTimerPlugin extends Plugin
 
 	@Subscribe
 	public void onGameObjectDespawned(GameObjectDespawned objectDespawned) {
-		if (FireType.fromObjectId(objectDespawned.getGameObject().getId()) != null) {
-			this.fireIds.remove(objectDespawned.getGameObject().getHash());
+		GameObject obj = objectDespawned.getGameObject();
+		FireType fireType = FireType.fromObjectId(obj.getId());
+		if (fireType != null) {
+			log.info("[fire-timer-plus] DESPAWN tick={} id={} hash={} tile={} canRefuel={}",
+					this.lastTrueTickUpdate, obj.getId(), obj.getHash(), obj.getWorldLocation(), fireType.isCanRefuel());
+			// Defer removal: the engine often pairs despawn+respawn within
+			// the same tick for campfires. onGameTick prunes any pending
+			// despawns whose grace window has expired.
+			this.pendingDespawns.put(obj.getHash(), this.lastTrueTickUpdate);
 		}
 	}
 
@@ -188,6 +225,16 @@ public class FireTimerPlugin extends Plugin
 		this.fireIds.forEach((fireIdHash, fireTimeLocation) ->
 						fireTimeLocation.setTicksSinceFireLit(
 								this.lastTrueTickUpdate - fireTimeLocation.getTickFireStarted()));
+
+		// Finalize any pending despawns that didn't get a matching respawn
+		// within the grace window.
+		this.pendingDespawns.entrySet().removeIf(e -> {
+			if (this.lastTrueTickUpdate - e.getValue() > DESPAWN_GRACE_TICKS) {
+				this.fireIds.remove(e.getKey());
+				return true;
+			}
+			return false;
+		});
 
 		if (this.lastConsumedLog != null
 				&& (this.lastTrueTickUpdate - this.lastConsumedLogTick) > RECENT_LOG_TIMEOUT_TICKS)
