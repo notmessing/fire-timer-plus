@@ -10,6 +10,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameObjectDespawned;
 import net.runelite.api.events.GameStateChanged;
@@ -136,6 +137,86 @@ public class FireTimerPlugin extends Plugin
 						maxOverride
 				)
 		);
+	}
+
+	@Subscribe
+	public void onChatMessage(ChatMessage event)
+	{
+		if (event.getType() != ChatMessageType.GAMEMESSAGE
+				&& event.getType() != ChatMessageType.SPAM)
+		{
+			return;
+		}
+
+		String msg = event.getMessage();
+		if (!msg.startsWith("You add") || !msg.endsWith("to the fire."))
+		{
+			return;
+		}
+
+		Player player = client.getLocalPlayer();
+		if (player == null)
+		{
+			return;
+		}
+		WorldPoint playerLoc = player.getWorldLocation();
+		if (playerLoc == null)
+		{
+			return;
+		}
+
+		FireTimeLocation campfire = findAdjacentRefuelableFire(playerLoc);
+		if (campfire == null)
+		{
+			return;
+		}
+
+		WorldPoint cfTile = campfire.getFire().getWorldLocation();
+		PendingLog pending = this.pendingLogs.remove(cfTile);
+		if (pending == null)
+		{
+			return;
+		}
+
+		applyRefuel(campfire, pending);
+	}
+
+	private FireTimeLocation findAdjacentRefuelableFire(WorldPoint playerLoc)
+	{
+		for (FireTimeLocation loc : this.fireIds.values())
+		{
+			if (!loc.getFireType().isCanRefuel())
+			{
+				continue;
+			}
+			WorldPoint cf = loc.getFire().getWorldLocation();
+			if (cf == null)
+			{
+				continue;
+			}
+			if (Math.abs(cf.getX() - playerLoc.getX()) <= 1
+					&& Math.abs(cf.getY() - playerLoc.getY()) <= 1
+					&& cf.getPlane() == playerLoc.getPlane())
+			{
+				return loc;
+			}
+		}
+		return null;
+	}
+
+	private void applyRefuel(FireTimeLocation campfire, PendingLog pending)
+	{
+		FireType fireType = campfire.getFireType();
+		long elapsed = this.lastTrueTickUpdate - campfire.getTickFireStarted();
+
+		Integer currentMax = campfire.getMaxTicksOverride();
+		long currentRemaining = currentMax != null
+				? Math.max(0, currentMax - elapsed)
+				: 0;
+
+		long newRemaining = Math.min(fireType.getMaxTicks(), currentRemaining + pending.logType.getTicksAdded());
+		int newMax = (int) (elapsed + newRemaining);
+		campfire.setMaxTicksOverride(newMax);
 	}
 
 	@Subscribe
