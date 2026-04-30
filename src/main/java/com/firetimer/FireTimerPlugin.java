@@ -10,13 +10,11 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameObjectDespawned;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
-import net.runelite.api.events.MenuOptionClicked;
-import net.runelite.api.widgets.Widget;
+import net.runelite.api.events.StatChanged;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -31,7 +29,10 @@ import net.runelite.client.ui.overlay.OverlayManager;
 )
 public class FireTimerPlugin extends Plugin
 {
-	private static final int PENDING_LOG_TIMEOUT_TICKS = 30;
+	// How long after a firemaking XP drop we'll still attribute a fresh
+	// campfire spawn to that drop (handles the case where StatChanged
+	// fires before the GameObjectSpawned for the new campfire).
+	private static final int RECENT_LOG_TIMEOUT_TICKS = 2;
 
 	@Inject
 	private Client client;
@@ -48,13 +49,17 @@ public class FireTimerPlugin extends Plugin
 	@Getter(AccessLevel.PACKAGE)
 	private Map<Long, FireTimeLocation> fireIds;
 
-	private Map<WorldPoint, PendingLog> pendingLogs;
+	private int previousFiremakingXp;
+	private CampfireLog lastConsumedLog;
+	private long lastConsumedLogTick;
 
 	@Override
 	protected void startUp() throws Exception
 	{
 		this.fireIds = new HashMap<>();
-		this.pendingLogs = new HashMap<>();
+		this.previousFiremakingXp = -1;
+		this.lastConsumedLog = null;
+		this.lastConsumedLogTick = -1;
 		this.overlayManager.add(this.fireTimerOverlay);
 	}
 
@@ -62,7 +67,9 @@ public class FireTimerPlugin extends Plugin
 	protected void shutDown() throws Exception
 	{
 		this.fireIds.clear();
-		this.pendingLogs.clear();
+		this.previousFiremakingXp = -1;
+		this.lastConsumedLog = null;
+		this.lastConsumedLogTick = -1;
 		this.overlayManager.remove(this.fireTimerOverlay);
 	}
 
@@ -73,83 +80,36 @@ public class FireTimerPlugin extends Plugin
 				event.getGameState() == GameState.HOPPING)
 		{
 			this.fireIds.clear();
-			this.pendingLogs.clear();
+			this.previousFiremakingXp = -1;
+			this.lastConsumedLog = null;
+			this.lastConsumedLogTick = -1;
 		}
 	}
 
 	@Subscribe
-	public void onMenuOptionClicked(MenuOptionClicked event)
+	public void onStatChanged(StatChanged event)
 	{
-		if (event.getMenuAction() != MenuAction.WIDGET_TARGET_ON_GAME_OBJECT)
+		if (event.getSkill() != Skill.FIREMAKING)
 		{
 			return;
 		}
 
-		Widget selected = client.getSelectedWidget();
-		if (selected == null)
+		int currentXp = event.getXp();
+		if (this.previousFiremakingXp < 0)
 		{
+			this.previousFiremakingXp = currentXp;
 			return;
 		}
-		int itemId = selected.getItemId();
-		if (itemId <= 0)
+
+		int delta = currentXp - this.previousFiremakingXp;
+		this.previousFiremakingXp = currentXp;
+		if (delta <= 0)
 		{
 			return;
 		}
 
-		CampfireLog log = CampfireLog.fromItemId(itemId);
+		CampfireLog log = CampfireLog.fromFiremakingXpDelta(delta);
 		if (log == null)
-		{
-			return;
-		}
-
-		WorldPoint targetTile = WorldPoint.fromScene(
-				client,
-				event.getMenuEntry().getParam0(),
-				event.getMenuEntry().getParam1(),
-				client.getPlane()
-		);
-		this.pendingLogs.put(targetTile, new PendingLog(log, this.lastTrueTickUpdate));
-	}
-
-	@Subscribe
-	public void onGameObjectSpawned(GameObjectSpawned objectSpawned) {
-		GameObject obj = objectSpawned.getGameObject();
-		FireType fireType = FireType.fromObjectId(obj.getId());
-		if (fireType == null) {
-			return;
-		}
-
-		Integer maxOverride = null;
-		if (fireType.isCanRefuel()) {
-			PendingLog pending = this.pendingLogs.remove(obj.getWorldLocation());
-			if (pending != null) {
-				maxOverride = Math.min(fireType.getMaxTicks(), pending.logType.getTicksAdded());
-			}
-		}
-
-		this.fireIds.putIfAbsent(obj.getHash(),
-				new FireTimeLocation(
-						obj,
-						obj.getWorldLocation(),
-						0,
-						this.lastTrueTickUpdate,
-						fireType,
-						maxOverride
-				)
-		);
-	}
-
-	@Subscribe
-	public void onChatMessage(ChatMessage event)
-	{
-		if (event.getType() != ChatMessageType.GAMEMESSAGE
-				&& event.getType() != ChatMessageType.SPAM)
-		{
-			return;
-		}
-
-		String msg = event.getMessage();
-		if (!msg.startsWith("You add") || !msg.endsWith("to the fire."))
 		{
 			return;
 		}
@@ -168,55 +128,50 @@ public class FireTimerPlugin extends Plugin
 		FireTimeLocation campfire = findAdjacentRefuelableFire(playerLoc);
 		if (campfire == null)
 		{
+			// No campfire adjacent yet -- this might be the lighting log
+			// for a campfire that's about to spawn this tick. Hold the
+			// log briefly; onGameObjectSpawned will pick it up.
+			this.lastConsumedLog = log;
+			this.lastConsumedLogTick = this.lastTrueTickUpdate;
 			return;
 		}
 
-		WorldPoint cfTile = campfire.getFire().getWorldLocation();
-		PendingLog pending = this.pendingLogs.remove(cfTile);
-		if (pending == null)
-		{
+		applyLogToExistingCampfire(campfire, log);
+	}
+
+	@Subscribe
+	public void onGameObjectSpawned(GameObjectSpawned objectSpawned) {
+		GameObject obj = objectSpawned.getGameObject();
+		FireType fireType = FireType.fromObjectId(obj.getId());
+		if (fireType == null) {
 			return;
 		}
 
-		applyRefuel(campfire, pending);
-	}
-
-	private FireTimeLocation findAdjacentRefuelableFire(WorldPoint playerLoc)
-	{
-		for (FireTimeLocation loc : this.fireIds.values())
+		Integer maxOverride = null;
+		if (fireType.isCanRefuel()
+				&& this.lastConsumedLog != null
+				&& (this.lastTrueTickUpdate - this.lastConsumedLogTick) <= RECENT_LOG_TIMEOUT_TICKS)
 		{
-			if (!loc.getFireType().isCanRefuel())
-			{
-				continue;
-			}
-			WorldPoint cf = loc.getFire().getWorldLocation();
-			if (cf == null)
-			{
-				continue;
-			}
-			if (Math.abs(cf.getX() - playerLoc.getX()) <= 1
-					&& Math.abs(cf.getY() - playerLoc.getY()) <= 1
-					&& cf.getPlane() == playerLoc.getPlane())
-			{
-				return loc;
-			}
+			// XP drop already fired before this spawn -- this is our initial
+			// light: 99 base + log.ticksAdded.
+			maxOverride = Math.min(
+					fireType.getMaxTicks(),
+					CampfireLog.CAMPFIRE_BASE_TICKS + this.lastConsumedLog.getTicksAdded()
+			);
+			this.lastConsumedLog = null;
+			this.lastConsumedLogTick = -1;
 		}
-		return null;
-	}
 
-	private void applyRefuel(FireTimeLocation campfire, PendingLog pending)
-	{
-		FireType fireType = campfire.getFireType();
-		long elapsed = this.lastTrueTickUpdate - campfire.getTickFireStarted();
-
-		Integer currentMax = campfire.getMaxTicksOverride();
-		long currentRemaining = currentMax != null
-				? Math.max(0, currentMax - elapsed)
-				: 0;
-
-		long newRemaining = Math.min(fireType.getMaxTicks(), currentRemaining + pending.logType.getTicksAdded());
-		int newMax = (int) (elapsed + newRemaining);
-		campfire.setMaxTicksOverride(newMax);
+		this.fireIds.putIfAbsent(obj.getHash(),
+				new FireTimeLocation(
+						obj,
+						obj.getWorldLocation(),
+						0,
+						this.lastTrueTickUpdate,
+						fireType,
+						maxOverride
+				)
+		);
 	}
 
 	@Subscribe
@@ -234,8 +189,12 @@ public class FireTimerPlugin extends Plugin
 						fireTimeLocation.setTicksSinceFireLit(
 								this.lastTrueTickUpdate - fireTimeLocation.getTickFireStarted()));
 
-		this.pendingLogs.entrySet().removeIf(e ->
-				(this.lastTrueTickUpdate - e.getValue().tickStamp) > PENDING_LOG_TIMEOUT_TICKS);
+		if (this.lastConsumedLog != null
+				&& (this.lastTrueTickUpdate - this.lastConsumedLogTick) > RECENT_LOG_TIMEOUT_TICKS)
+		{
+			this.lastConsumedLog = null;
+			this.lastConsumedLogTick = -1;
+		}
 	}
 
 	@Provides
@@ -244,15 +203,58 @@ public class FireTimerPlugin extends Plugin
 		return configManager.getConfig(FireTimerConfig.class);
 	}
 
-	private static final class PendingLog
+	private FireTimeLocation findAdjacentRefuelableFire(WorldPoint playerLoc)
 	{
-		final CampfireLog logType;
-		final long tickStamp;
-
-		PendingLog(CampfireLog logType, long tickStamp)
+		for (FireTimeLocation loc : this.fireIds.values())
 		{
-			this.logType = logType;
-			this.tickStamp = tickStamp;
+			if (!loc.getFireType().isCanRefuel())
+			{
+				continue;
+			}
+			WorldPoint cf = loc.getFire().getWorldLocation();
+			if (cf == null || cf.getPlane() != playerLoc.getPlane())
+			{
+				continue;
+			}
+			if (Math.abs(cf.getX() - playerLoc.getX()) <= 1
+					&& Math.abs(cf.getY() - playerLoc.getY()) <= 1)
+			{
+				return loc;
+			}
 		}
+		return null;
+	}
+
+	private void applyLogToExistingCampfire(FireTimeLocation campfire, CampfireLog log)
+	{
+		FireType fireType = campfire.getFireType();
+		long elapsed = this.lastTrueTickUpdate - campfire.getTickFireStarted();
+		Integer currentMax = campfire.getMaxTicksOverride();
+
+		long newRemaining;
+		if (currentMax == null)
+		{
+			// First log we observe on this campfire. Two sub-cases:
+			// (a) Just spawned this tick -- this is the initial light XP
+			//     drop arriving after the GameObjectSpawned. Apply 99 base.
+			// (b) Walked-up campfire -- conservatively assume 0 prior
+			//     remaining and credit only this log's gain.
+			if (elapsed <= RECENT_LOG_TIMEOUT_TICKS)
+			{
+				newRemaining = CampfireLog.CAMPFIRE_BASE_TICKS + log.getTicksAdded();
+			}
+			else
+			{
+				newRemaining = log.getTicksAdded();
+			}
+		}
+		else
+		{
+			long currentRemaining = Math.max(0, currentMax - elapsed);
+			newRemaining = currentRemaining + log.getTicksAdded();
+		}
+
+		newRemaining = Math.min(fireType.getMaxTicks(), newRemaining);
+		campfire.setMaxTicksOverride((int) (elapsed + newRemaining));
 	}
 }
