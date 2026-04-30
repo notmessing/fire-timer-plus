@@ -32,19 +32,27 @@ tasks.withType(JavaCompile) {
 	options.encoding = 'UTF-8'
 }
 
+// Launches a dev RuneLite with Fire Timer Plus pre-loaded. Passes
+// --developer-mode so the client reads ~/.runelite/credentials.properties.
+// For Jagex-account login, follow the wiki's Jagex Launcher Development
+// workflow: run the official RuneLite once with the launcher argument
+// --insecure-write-credentials to populate that credentials file, then
+// re-run this task. See https://github.com/runelite/runelite/wiki/Jagex-Launcher-Development
 task runClient(type: JavaExec) {
 	group = 'application'
-	description = 'Launch a dev RuneLite with Fire Timer Plus loaded. For Jagex-account login, see the Jagex Launcher Development workflow in the RuneLite wiki: launch the official RuneLite once with --insecure-write-credentials in the launcher arguments to populate ~/.runelite/credentials.properties, then re-run this task.'
+	description = 'Launch a dev RuneLite with Fire Timer Plus pre-loaded.'
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = 'com.firetimer.FireTimerPluginTest'
 	jvmArgs '-ea'
 	args '--developer-mode'
 }
 
+// Builds the plugin JAR and copies it to ~/.runelite/sideloaded-plugins so
+// the official Jagex-launched RuneLite picks it up on next start.
 task sideloadInstall(type: Copy) {
 	dependsOn jar
 	group = 'application'
-	description = 'Build the plugin JAR and copy it into ~/.runelite/sideloaded-plugins for use with the Jagex Launcher.'
+	description = 'Build and install the plugin JAR to ~/.runelite/sideloaded-plugins.'
 	from jar.archiveFile
 	into "${System.getProperty('user.home')}/.runelite/sideloaded-plugins"
 }
