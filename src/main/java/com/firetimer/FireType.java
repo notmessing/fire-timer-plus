@@ -4,12 +4,12 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import lombok.Getter;
-import net.runelite.api.ObjectID;
 
 @Getter
 public enum FireType
 {
-	REGULAR_FIRE(setOf(ObjectID.FIRE_26185), 200, 100, false),
+	// 26185 = the standard player-made cooking fire (deob name FIRE_26185).
+	REGULAR_FIRE(setOf(26185), 200, 100, false),
 
 	// Forester's Campfire (Forestry update). The six IDs cover the Regular,
 	// Red, Green, Blue, White, and Purple log-color variants. Per the OSRS
