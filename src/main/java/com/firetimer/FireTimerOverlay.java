@@ -18,9 +18,6 @@ public class FireTimerOverlay extends Overlay {
 
     NumberFormat format = new DecimalFormat("#");
 
-    final int FIRE_MAX_TICKS = 200;
-    final int FIRE_MIN_TICKS = 100;
-
     @Inject
     FireTimerOverlay(FireTimerPlugin plugin, FireTimerConfig config)
     {
@@ -39,7 +36,8 @@ public class FireTimerOverlay extends Overlay {
 
     private void renderTimer(final FireTimeLocation fireTimeLocation, final Graphics2D graphics)
     {
-        double timeLeft = this.FIRE_MAX_TICKS - fireTimeLocation.getTicksSinceFireLit();
+        FireType fireType = fireTimeLocation.getFireType();
+        double timeLeft = fireType.getMaxTicks() - fireTimeLocation.getTicksSinceFireLit();
 
         Color timerColor = this.config.normalTimerColor();
 
@@ -48,7 +46,7 @@ public class FireTimerOverlay extends Overlay {
             timeLeft = 0;
         }
 
-        if (timeLeft <= this.FIRE_MIN_TICKS)
+        if (timeLeft <= fireType.getLowWarningTicks())
         {
             timerColor = this.config.lowTimerColor();
         }

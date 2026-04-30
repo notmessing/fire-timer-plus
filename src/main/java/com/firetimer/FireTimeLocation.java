@@ -14,4 +14,5 @@ public class FireTimeLocation {
     private final WorldPoint worldPoint;
     private long ticksSinceFireLit;
     private long tickFireStarted;
+    private final FireType fireType;
 }

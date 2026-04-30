@@ -68,13 +68,16 @@ public class FireTimerPlugin extends Plugin
 
 	@Subscribe
 	public void onGameObjectSpawned(GameObjectSpawned objectSpawned) {
-		if (objectSpawned.getGameObject().getId() == ObjectID.FIRE_26185) {
-			this.fireIds.putIfAbsent(objectSpawned.getGameObject().getHash(),
+		GameObject obj = objectSpawned.getGameObject();
+		FireType fireType = FireType.fromObjectId(obj.getId());
+		if (fireType != null) {
+			this.fireIds.putIfAbsent(obj.getHash(),
 					new FireTimeLocation(
-							objectSpawned.getGameObject(),
-							objectSpawned.getGameObject().getWorldLocation(),
+							obj,
+							obj.getWorldLocation(),
 							0,
-							this.lastTrueTickUpdate
+							this.lastTrueTickUpdate,
+							fireType
 					)
 			);
 		}
@@ -82,7 +85,7 @@ public class FireTimerPlugin extends Plugin
 
 	@Subscribe
 	public void onGameObjectDespawned(GameObjectDespawned objectDespawned) {
-		if (objectDespawned.getGameObject().getId() == ObjectID.FIRE_26185) {
+		if (FireType.fromObjectId(objectDespawned.getGameObject().getId()) != null) {
 			this.fireIds.remove(objectDespawned.getGameObject().getHash());
 		}
 	}
