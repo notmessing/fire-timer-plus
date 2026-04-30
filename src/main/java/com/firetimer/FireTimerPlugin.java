@@ -21,7 +21,9 @@ import net.runelite.client.ui.overlay.OverlayManager;
 
 @Slf4j
 @PluginDescriptor(
-	name = "Fire Timer"
+	name = "Fire Timer Plus",
+	description = "Adds an in-game timer over player-made fires and Forester's Campfires.",
+	tags = {"firemaking", "woodcutting", "forestry", "timer", "campfire", "overlay"}
 )
 public class FireTimerPlugin extends Plugin
 {
