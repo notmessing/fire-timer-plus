@@ -43,6 +43,8 @@ Fire Timer Plus is adapted from [autumn-smellegy/fire-timer](https://github.com/
 
 The original BSD-2-Clause license is preserved in [`LICENSE`](LICENSE).
 
+The plugin icon is derived from the Forester's Campfire image on the [OSRS Wiki](https://oldschool.runescape.wiki/w/Forester%27s_Campfire), used under the wiki's [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/) license.
+
 ## License
 
 BSD-2-Clause. See [`LICENSE`](LICENSE).
