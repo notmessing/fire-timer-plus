@@ -9,7 +9,13 @@ import net.runelite.api.ObjectID;
 @Getter
 public enum FireType
 {
-	REGULAR_FIRE(setOf(ObjectID.FIRE_26185), 200, 100, false);
+	REGULAR_FIRE(setOf(ObjectID.FIRE_26185), 200, 100, false),
+
+	// Forester's Campfire (Forestry update). The six IDs cover the Regular,
+	// Red, Green, Blue, White, and Purple log-color variants. Per the OSRS
+	// Wiki the lifetime caps at 300 ticks (~3 min) regardless of refuel;
+	// log-type inference and refuel tracking are layered in later phases.
+	CAMPFIRE(setOf(49927, 49928, 49929, 49930, 49931, 49932), 300, 100, true);
 
 	private final Set<Integer> objectIds;
 	private final int maxTicks;

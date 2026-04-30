@@ -37,27 +37,32 @@ public class FireTimerOverlay extends Overlay {
     private void renderTimer(final FireTimeLocation fireTimeLocation, final Graphics2D graphics)
     {
         FireType fireType = fireTimeLocation.getFireType();
-        double timeLeft = fireType.getMaxTicks() - fireTimeLocation.getTicksSinceFireLit();
+        long elapsed = fireTimeLocation.getTicksSinceFireLit();
 
-        Color timerColor = this.config.normalTimerColor();
+        final long displayValue;
+        final Color timerColor;
 
-        if (timeLeft < 0)
+        if (fireType.isCanRefuel())
         {
-            timeLeft = 0;
+            displayValue = Math.max(0, elapsed);
+            timerColor = elapsed >= (fireType.getMaxTicks() - fireType.getLowWarningTicks())
+                    ? this.config.lowTimerColor()
+                    : this.config.normalTimerColor();
+        }
+        else
+        {
+            long timeLeft = Math.max(0, fireType.getMaxTicks() - elapsed);
+            displayValue = timeLeft;
+            timerColor = timeLeft <= fireType.getLowWarningTicks()
+                    ? this.config.lowTimerColor()
+                    : this.config.normalTimerColor();
         }
 
-        if (timeLeft <= fireType.getLowWarningTicks())
+        String displayText = format.format(displayValue);
+        final Point canvasPoint = fireTimeLocation.getFire().getCanvasTextLocation(graphics, displayText, 40);
+        if (canvasPoint != null)
         {
-            timerColor = this.config.lowTimerColor();
-        }
-
-        String timeLeftString = String.valueOf(format.format(timeLeft));
-
-        final Point canvasPoint = fireTimeLocation.getFire().getCanvasTextLocation(graphics, timeLeftString, 40);
-
-        if (canvasPoint != null && (timeLeft >= 0))
-        {
-            OverlayUtil.renderTextLocation(graphics, canvasPoint, timeLeftString, timerColor);
+            OverlayUtil.renderTextLocation(graphics, canvasPoint, displayText, timerColor);
         }
     }
 }
