@@ -162,9 +162,6 @@ public class FireTimerPlugin extends Plugin
 			return;
 		}
 
-		log.info("[fire-timer-plus] SPAWN tick={} id={} hash={} tile={} canRefuel={}",
-				this.lastTrueTickUpdate, obj.getId(), obj.getHash(), obj.getWorldLocation(), fireType.isCanRefuel());
-
 		// If this respawn matches a pending despawn for the same hash,
 		// the engine is just re-instantiating the same campfire. Keep
 		// all tracking state and only refresh the GameObject reference.
@@ -172,7 +169,6 @@ public class FireTimerPlugin extends Plugin
 			FireTimeLocation existing = this.fireIds.get(obj.getHash());
 			if (existing != null) {
 				existing.setFire(obj);
-				log.info("[fire-timer-plus] (re-instantiated, state preserved)");
 				return;
 			}
 		}
@@ -209,8 +205,6 @@ public class FireTimerPlugin extends Plugin
 		GameObject obj = objectDespawned.getGameObject();
 		FireType fireType = FireType.fromObjectId(obj.getId());
 		if (fireType != null) {
-			log.info("[fire-timer-plus] DESPAWN tick={} id={} hash={} tile={} canRefuel={}",
-					this.lastTrueTickUpdate, obj.getId(), obj.getHash(), obj.getWorldLocation(), fireType.isCanRefuel());
 			// Defer removal: the engine often pairs despawn+respawn within
 			// the same tick for campfires. onGameTick prunes any pending
 			// despawns whose grace window has expired.
