@@ -194,6 +194,7 @@ public class FireTimerPlugin extends Plugin
 						obj.getWorldLocation(),
 						0,
 						this.lastTrueTickUpdate,
+						System.currentTimeMillis(),
 						fireType,
 						maxOverride
 				)
