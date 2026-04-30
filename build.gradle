@@ -31,3 +31,19 @@ targetCompatibility = '11'
 tasks.withType(JavaCompile) {
 	options.encoding = 'UTF-8'
 }
+
+task runClient(type: JavaExec) {
+	group = 'application'
+	description = 'Launch a dev RuneLite with Fire Timer Plus loaded (legacy-account login only; Jagex accounts must use sideloadInstall + Jagex Launcher).'
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'com.firetimer.FireTimerPluginTest'
+	jvmArgs '-ea'
+}
+
+task sideloadInstall(type: Copy) {
+	dependsOn jar
+	group = 'application'
+	description = 'Build the plugin JAR and copy it into ~/.runelite/sideloaded-plugins for use with the Jagex Launcher.'
+	from jar.archiveFile
+	into "${System.getProperty('user.home')}/.runelite/sideloaded-plugins"
+}
