@@ -1,25 +1,45 @@
 # Fire Timer Plus
 
-A RuneLite plugin that displays an in-game timer over player-made fires **and** Forester's Campfires, so you know how much burn time is left before they go out.
+A RuneLite plugin that displays a countdown timer over **player-made fires** and **Forester's Campfires** so you know exactly when each will burn out.
+
+![Regular fire and Forester's Campfire with timers overlaid](images/fires.png)
 
 ## Features
 
-- **Regular fires** — same behavior as the original [Fire Timer](https://github.com/autumn-smellegy/fire-timer): a countdown over each fire you light, with a color change when the fire enters its "may burn out at any moment" window.
-- **Forester's Campfires** — tracks the six campfire object variants (49927–49932) introduced with the Forestry update. Detects which logs you used to light or refuel the fire, infers the remaining burn time, and clamps to the 300-tick (~3 minute) campfire cap.
-- **Display toggle** — show the remaining time as raw game ticks (default) or as `m:ss`, configurable per user.
+- **Regular fires** — a 200-tick countdown over each fire you light, with a color change when the fire enters its "may burn out at any moment" window. (Same as the original [Fire Timer](https://github.com/autumn-smellegy/fire-timer).)
+- **Forester's Campfires** (Forestry update) — tracks campfires you light, infers the per-log burn time, and detects each refuel via the Firemaking XP drop. Countdown updates automatically whether you use "Use log on fire" directly or the chat-dialog flow.
+- **Refuel-aware** — adding a log extends the countdown live:
 
-## How the campfire timer works
+  ![Refueling a campfire extends the countdown](images/refuel.gif)
+- **Display toggle** — show the remaining time as raw game ticks (default) or as `m:ss`. The `m:ss` mode is wall-clock-driven for smooth per-second updates.
+- **Allow negative** (optional) — when on, the campfire countdown continues into negative numbers once our estimate runs out. A signal that someone else refueled it.
+- **Configurable colors** — pick the normal and low-warning text colors.
 
-Forester's Campfires don't expose their remaining lifetime directly to the client. The plugin infers it by:
+## Configuration
 
-1. Watching `MenuOptionClicked` for "Use log on fire" actions and remembering the log type involved.
-2. On `GameObjectSpawned` of a campfire (initial light) or chat-message confirmation of a successful refuel, applying the per-log-type tick gain (e.g. +3 for regular logs, +17 for willow, +38 for magic, +45 for redwood) up to the 300-tick cap.
+![Plugin configuration panel](images/config.png)
 
-If you walk up to a campfire someone else lit, the plugin doesn't know its starting state and falls back to a count-up display from the moment it became visible to you.
+| Setting | Default | Description |
+|---|---|---|
+| Display unit | Ticks | Show timer as raw ticks (e.g. `137`) or `m:ss` (e.g. `1:22`). |
+| Allow negative | Off | When on, refuelable-fire countdowns continue past 0 (`-1`, `-2`, …) instead of clamping. |
+| Normal timer color | White | Color of the timer while the fire is healthy. |
+| Low timer color | Red | Color when the fire is in the burnout window. |
+
+## How it works
+
+Two RuneLite event sources do all the work:
+
+1. **`GameObjectSpawned` / `GameObjectDespawned`** for fires and campfires the plugin should track. Forester's Campfires are re-instantiated by the engine roughly every 99 ticks (a paired despawn + same-tick respawn at the same tile and hash); the plugin buffers despawns for one tick so it can match the respawn and preserve tracking state.
+2. **`StatChanged`** for Firemaking XP. Each log burned produces a deterministic XP delta (40 for normal logs, 60 oak, 90 willow, …, 350 redwood). When the local player is adjacent to a Forester's Campfire and a known log XP delta arrives, the plugin extends the countdown by that log's `+ticks_added` value, capped at 300 ticks remaining.
+
+Because detection is XP-based rather than menu-click-based, refuel tracking works for the "Use log on fire" flow, the right-click "Add-log" dialog flow, and rapid auto-repeat alike.
+
+For Forester's Campfires you walk up to (and didn't witness the lighting), the plugin starts in count-up mode until you add a log yourself, at which point it switches to a conservative countdown anchored to your log's contribution.
 
 ## Attribution
 
-This plugin is adapted from [autumn-smellegy/fire-timer](https://github.com/autumn-smellegy/fire-timer), which is itself a fork of [alevine/fire-timer](https://github.com/alevine/fire-timer). The original Fire Timer plugin handles regular player-made fires; Fire Timer Plus extends it with Forester's Campfire support and a configurable display unit.
+Fire Timer Plus is adapted from [autumn-smellegy/fire-timer](https://github.com/autumn-smellegy/fire-timer), itself a fork of [alevine/fire-timer](https://github.com/alevine/fire-timer). The original Fire Timer handles regular player-made fires; Fire Timer Plus extends it with Forester's Campfire tracking, log-type-aware countdowns, XP-drop refuel detection, and a configurable display unit.
 
 The original BSD-2-Clause license is preserved in [`LICENSE`](LICENSE).
 
