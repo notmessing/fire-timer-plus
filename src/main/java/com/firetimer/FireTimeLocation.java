@@ -15,4 +15,5 @@ public class FireTimeLocation {
     private long ticksSinceFireLit;
     private long tickFireStarted;
     private final FireType fireType;
+    private Integer maxTicksOverride;
 }

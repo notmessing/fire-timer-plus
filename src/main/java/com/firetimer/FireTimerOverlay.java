@@ -38,11 +38,20 @@ public class FireTimerOverlay extends Overlay {
     {
         FireType fireType = fireTimeLocation.getFireType();
         long elapsed = fireTimeLocation.getTicksSinceFireLit();
+        Integer override = fireTimeLocation.getMaxTicksOverride();
 
         final long displayValue;
         final Color timerColor;
 
-        if (fireType.isCanRefuel())
+        if (fireType.isCanRefuel() && override != null)
+        {
+            long timeLeft = Math.max(0, override - elapsed);
+            displayValue = timeLeft;
+            timerColor = timeLeft <= fireType.getLowWarningTicks()
+                    ? this.config.lowTimerColor()
+                    : this.config.normalTimerColor();
+        }
+        else if (fireType.isCanRefuel())
         {
             displayValue = Math.max(0, elapsed);
             timerColor = elapsed >= (fireType.getMaxTicks() - fireType.getLowWarningTicks())
